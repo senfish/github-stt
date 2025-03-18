@@ -46,9 +46,7 @@ import { request } from '@request';
           _url: url,
           _method: method,
         };
-        // operationObject._url = url;
-        // operationObject._method = method;
-        // 四种参数 path query body response，暂时不生成path参数
+        // path query body response request 暂时不生成path参数
         if (parameters) {
           str += this.genQueryInterface(operationObject);
         }
@@ -73,8 +71,7 @@ import { request } from '@request';
     // 解析body里面的type类型 info.$ref
     // response => info.allOf[0].$ref
     // response => info.items.$ref && info.type === array
-    function getEnumType(enums: string[], description?: string) {
-      // TODO 对于枚举类型的注释，依赖description的描述生成
+    function getEnumType(enums: string[]) {
       let props = enums.reduce((acc, cur, index) => {
         if (index === 0) return acc;
         return acc + (index !== 1 ? " | " : "") + `'${cur}'`;
@@ -108,11 +105,12 @@ import { request } from '@request';
       return "boolean";
     } else if (info.type === "string") {
       if (info.format === "enum") {
-        return getEnumType(info.enum, info.description);
+        return getEnumType(info.enum);
       }
       return "string";
     }
   }
+
   genQueryInterface(operationObject: OperationObject) {
     const { parameters } = operationObject;
     // path参数参数不考虑，只生成query ===> xxx?id=1&name=1
@@ -134,14 +132,16 @@ import { request } from '@request';
     });
     return this.interfaceTemplate(interfaceName, properties, comments);
   }
+
   genBodyInterface(operationObject: OperationObject) {
     const { requestBody } = operationObject;
     const uriValue = _.get(requestBody, ["content", "application/json", "schema", "$ref"], "");
     const interfaceName = this.getInterfaceName(operationObject.operationId, "Body");
     const schema: SwaggerDataProps["components"]["schema"]["string"] = this.getSchemaByRef(uriValue);
     const { required = [], type, properties } = schema;
-    if (isEmpty(schema)) return "";
     // body里面可能为空，为空，直接返回空字符串
+    if (isEmpty(schema)) return "";
+
     const _properties = Object.keys(schema.properties).map((key) => {
       const info = schema.properties[key];
       return {
@@ -151,6 +151,7 @@ import { request } from '@request';
         required: required.includes(key),
       };
     });
+
     const comments = this.getComments({
       type: "Body",
       _url: operationObject._url,
@@ -158,6 +159,7 @@ import { request } from '@request';
     });
     return this.interfaceTemplate(interfaceName, _properties, comments);
   }
+
   genRequestInterface(operationObject: OperationObject) {
     const methodMap = {
       put: "update",
@@ -165,7 +167,6 @@ import { request } from '@request';
       get: "get",
       post: "create",
     };
-    var reg = /\{[^}]+\}/g;
     const prefix = methodMap[operationObject._method as "put" | "delete" | "get" | "post"];
     const pathField = getUrlPathField(operationObject._url);
     const suffix = pathField ? `By${firstLetterCap(pathField)}` : "";
@@ -181,6 +182,7 @@ export const ${prefix}${functionName}${suffix} = async <T>(options) => {
   })) as T;
 };`;
   }
+
   genResponseInterface(operationObject: OperationObject) {
     const ref = _.get(operationObject.responses, ["200", "content", "application/json", "schema", "$ref"], "");
     if (_.isEmpty(ref)) return "";
@@ -203,11 +205,13 @@ export const ${prefix}${functionName}${suffix} = async <T>(options) => {
     });
     return this.interfaceTemplate(interfaceName, _properties, comments);
   }
+
   getInterfaceName(operationId: string, suffix: InterfaceSuffix) {
     const names = operationId?.split("_") || "";
     const name = names[names.length - 1];
     return firstLetterCap(name) + suffix;
   }
+
   getComments(options: { _url?: string; _method?: string; type: InterfaceSuffix }) {
     return `
 /**
@@ -216,6 +220,7 @@ export const ${prefix}${functionName}${suffix} = async <T>(options) => {
  * method ${options._method}
  */`;
   }
+
   interfaceTemplate(interfaceName: string, properties: Property[], comments: string = "", isExport = true) {
     let code = `
 ${comments}
@@ -223,18 +228,20 @@ ${isExport ? "export" : ""} interface ${interfaceName} {${this.generatorInterfac
 }`;
     return code;
   }
-  typeTemplate() {}
+
   generatorInterfaceContent(properties: Property[], interfaceName: string) {
     return properties.reduce((acc, cur) => {
       return acc + this.genLineContent(cur, interfaceName);
     }, "");
   }
+
   genLineContent(lineInfo: Property, interfaceName: string) {
     let line = `
   /** ${lineInfo.description || ""} */
   ${lineInfo.key}${lineInfo.required ? "" : "?"}: ${this.genType(lineInfo.type, interfaceName, lineInfo.key)};`;
     return line;
   }
+
   genType(type: Property["type"], interfaceName?: string, key?: string) {
     if (typeof type === "string") return type;
     // 有$ref属性的可能是数组/对象
@@ -243,12 +250,11 @@ ${isExport ? "export" : ""} interface ${interfaceName} {${this.generatorInterfac
       const schemaPaths = type["$ref"].split("/");
       // web.interface.v1.PhoneInfo
       const schemaLastPath = schemaPaths[schemaPaths.length - 1];
-
       const tempInterfaceName = schemaLastPath.split(".");
       // PhoneInfo
       const subInterfaceName = tempInterfaceName[tempInterfaceName.length - 1];
+      // 避免循环引用
       if (subInterfaceName === interfaceName) {
-        // 避免循环引用
         return type?.type === "array" ? `${subInterfaceName}[]` : subInterfaceName;
       }
       const schema = this.getSchemaByRef(type["$ref"]);
@@ -268,12 +274,16 @@ ${isExport ? "export" : ""} interface ${interfaceName} {${this.generatorInterfac
     // 枚举类型
     if (type && type?.type === "enum") {
       let typeName = `${toCamelCase(firstLetterCap(key!))}Type`;
+
       if (this.codeMap.has(typeName)) {
         typeName = `${interfaceName}${typeName}`;
       }
+
       const typeCodeStr = `
 export type ${typeName} = ${type.props}`;
+
       this.codeMap.set(typeName!, typeCodeStr);
+
       return typeName;
     }
     // string[]  number[]

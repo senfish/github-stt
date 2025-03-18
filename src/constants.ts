@@ -82,8 +82,7 @@ export interface SwaggerDataProps {
   };
 }
 
-type MethodType<Method extends keyof SwaggerDataProps["paths"][string]> =
-  SwaggerDataProps["paths"][string][Method];
+type MethodType<Method extends keyof SwaggerDataProps["paths"][string]> = SwaggerDataProps["paths"][string][Method];
 export type OperationObject = {
   _url: string;
   _method: string;
