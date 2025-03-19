@@ -1,4 +1,4 @@
-# swagger 转 ts 的工具
+# swagger 自动生成ts类型工具
 
 ## 最小案例复现
 
