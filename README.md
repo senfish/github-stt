@@ -8,7 +8,7 @@
 npm install
 ```
 
-基于`origin.yaml`生产 `ts` 类型文件，默认在`src/@types`目录下生成类型文件，配合 cli 一起使用，功能更丰富
+基于`origin.yaml`生成 `ts` 类型文件，默认在`src/@types`目录下生成类型文件，配合 cli 一起使用，功能更丰富
 
 ```bash
 npm start
